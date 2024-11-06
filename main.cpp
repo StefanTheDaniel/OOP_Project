@@ -1,10 +1,9 @@
-#include <algorithm>
+#include <algorithm> //for engine
 #include <iostream>
 #include <string>
 #include <vector>
 #include <random>
 #include <ctime>
-#include <algorithm>
 
 class Card
 {
@@ -56,11 +55,11 @@ class Hand
     }
     void removeCard(const Card& card)
     {
-        for(auto it=cards.begin(); it!=cards.end(); it++)
+        for(auto i=cards.begin(); i!=cards.end(); i++)
         {
-            if(it->getSuit()==card.getSuit() && it->getValue()==card.getValue())
+            if(i->getSuit()==card.getSuit() && i->getValue()==card.getValue())
             {
-                cards.erase(it);
+                cards.erase(i);
                 break;
             }
         }
@@ -84,7 +83,6 @@ class Deck
 public:
     Deck()
     {
-        int i=0;
         for(int suit=0;suit<4;suit++)
         {
             for(int value=1; value<=13; value++)
@@ -153,8 +151,8 @@ class Shuffle
     }
     void shuffle()
     {
-        std::random_device rd;
-        std::mt19937 g(rd());
+        std::random_device rd;//random number generator
+        std::mt19937 g(rd());//mersenne twister engine
         std::shuffle(deck.begin(), deck.end(),g);
     }
 
