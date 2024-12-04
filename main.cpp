@@ -1,200 +1,267 @@
-#include <algorithm> //for engine
 #include <iostream>
-#include <string>
 #include <vector>
+#include <string>
+#include <memory>
+#include <algorithm>
+#include <stdexcept>
 #include <random>
-#include <ctime>
 
-class Card
-{
-    int suit;
-    int value;
+class GameException : public std::exception {
+protected:
+    std::string message;
+public:
+    explicit GameException(const std::string& msg) : message(msg) {}
+    const char* what() const noexcept override { return message.c_str(); }
+};
+
+class InvalidCardException : public GameException {
+public:
+    InvalidCardException() : GameException("Card invalid selectat!") {}
+};
+
+class InvalidPlayerException : public GameException {
+public:
+    InvalidPlayerException() : GameException("Jucător invalid!") {}
+};
+
+class EmptyDeckException : public GameException {
+public:
+    EmptyDeckException() : GameException("Nu mai sunt cărți în pachet!") {}
+};
+
+class Card {
+protected:
+    int suit;  // 0 = Hearts, 1 = Spades, 2 = Diamonds, 3 = Clubs, 4 = Joker
+    int value; // 1-13 pentru cărți standard, 1 sau 2 pentru jokers
 public:
     Card(int suit, int value) : suit(suit), value(value) {}
+    virtual ~Card() = default;
+    virtual void print(std::ostream& os) const = 0;
+    virtual Card* clone() const = 0;
 
-    void print() const
-    {
-        if (suit == 4) //for the jokers
-        {
-            std::cout<<(value == 1 ? "Black Joker" : "Red Joker")<<std::endl;
-        }
-        else //for the royal cards, ace is treated as value=1
-        {
-            std::string SpecialValue;
-            switch(value)
-            {
-            case 1:SpecialValue="Ace"; break;
-            case 11:SpecialValue="Jack"; break;
-            case 12:SpecialValue="Queen"; break;
-            case 13:SpecialValue="King"; break;
-            default:SpecialValue=std::to_string(value); break;
-            }
-            std::string suitString;
-            switch (suit)
-            {
-            case 0: suitString = "Hearts";break;
-            case 1: suitString = "Spades";break;
-            case 2: suitString = "Diamonds";break;
-            case 3: suitString = "Clubs";break;
-            default: suitString = "Other Suit"; break;
-            }
-            std::cout << SpecialValue<<" of "<<suitString<<std::endl;
-        }
-    }
-    int getValue() const{return value;}
-    int getSuit() const{return suit;}
-};
-
-class Hand
-{
-    std::vector<Card> cards;
-    public:
-    void addCard(const Card& card)
-    {
-        cards.push_back(card);
-    }
-    void removeCard(const Card& card)
-    {
-        for(auto i=cards.begin(); i!=cards.end(); i++)
-        {
-            if(i->getSuit()==card.getSuit() && i->getValue()==card.getValue())
-            {
-                cards.erase(i);
-                break;
-            }
-        }
-    }
-    void printCards() const
-    {
-        for(const auto& card : cards)
-        {
-            card.print();
-        }
-    }
-    int getHandSize() const
-    {
-        return cards.size();
+    int getValue() const { return value; }
+    int getSuit() const { return suit; }
+    friend std::ostream& operator<<(std::ostream& os, const Card& card) {
+        card.print(os);
+        return os;
     }
 };
 
-class Deck
-{
-    std::vector<Card> cards;
+class StandardCard : public Card {
 public:
-    Deck()
-    {
-        for(int suit=0;suit<4;suit++)
-        {
-            for(int value=1; value<=13; value++)
-            {
-                cards.push_back(Card(suit, value));
+    StandardCard(int suit, int value) : Card(suit, value) {}
+    void print(std::ostream& os) const override {
+        std::string valueString;
+        switch (value) {
+            case 1: valueString = "Ace"; break;
+            case 11: valueString = "Jack"; break;
+            case 12: valueString = "Queen"; break;
+            case 13: valueString = "King"; break;
+            default: valueString = std::to_string(value); break;
+        }
+        std::string suitString;
+        switch (suit) {
+            case 0: suitString = "Hearts"; break;
+            case 1: suitString = "Spades"; break;
+            case 2: suitString = "Diamonds"; break;
+            case 3: suitString = "Clubs"; break;
+        }
+        os << valueString << " of " << suitString;
+    }
+    Card* clone() const override { return new StandardCard(*this); }
+};
+
+class JokerCard : public Card {
+public:
+    JokerCard(int value) : Card(4, value) {}
+    void print(std::ostream& os) const override {
+        os << (value == 1 ? "Black Joker" : "Red Joker");
+    }
+    Card* clone() const override { return new JokerCard(*this); }
+};
+
+class Deck {
+    std::vector<std::unique_ptr<Card>> cards;
+public:
+    Deck() {
+        for (int suit = 0; suit < 4; ++suit) {
+            for (int value = 1; value <= 13; ++value) {
+                cards.push_back(std::make_unique<StandardCard>(suit, value));
             }
         }
-        cards.push_back(Card(4, 1)); // Black Joker
-        cards.push_back(Card(4, 2)); // Red Joker
+        cards.push_back(std::make_unique<JokerCard>(1)); // Black Joker
+        cards.push_back(std::make_unique<JokerCard>(2)); // Red Joker
     }
-
-    void printDeck() const
-    {
-        for (const auto& card : cards)
-            card.print();
+    void shuffle() {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(cards.begin(), cards.end(), g);
     }
-
-    std::vector<Card> getDeck() const
-    {
-        return cards;
+    std::unique_ptr<Card> draw() {
+        if (cards.empty()) throw EmptyDeckException();
+        auto card = std::move(cards.back());
+        cards.pop_back();
+        return card;
     }
 };
 
-class Player
-{
+class Hand {
+    std::vector<std::unique_ptr<Card>> cards;
+public:
+    void addCard(std::unique_ptr<Card> card) {
+        cards.push_back(std::move(card));
+    }
+    std::unique_ptr<Card> removeCard(size_t index) {
+        if (index >= cards.size()) throw InvalidCardException();
+        auto card = std::move(cards[index]);
+        cards.erase(cards.begin() + index);
+        return card;
+    }
+    void print(std::ostream& os) const {
+        for (size_t i = 0; i < cards.size(); ++i) {
+            os << i << ": " << *cards[i] << std::endl;
+        }
+    }
+    size_t size() const { return cards.size(); }
+};
+
+class Player {
     std::string name;
-    int score;
-    Hand hand; //o mana pt jucator
+    Hand hand;
 public:
-    Player(const std::string name) : name(name), score(0) {}
-
-    void addCardHand(const Card& card)
-    {
-        hand.addCard(card);
+    explicit Player(const std::string& name) : name(name) {}
+    void addCard(std::unique_ptr<Card> card) {
+        hand.addCard(std::move(card));
     }
-    void removeCardHand(const Card& card)
-    {
-        hand.removeCard(card);
+    std::unique_ptr<Card> playCard(size_t index) {
+        return hand.removeCard(index);
     }
-    void printHand() const
-    {
-        std::cout<<"Hand of "<<name<<std::endl;
-        hand.printCards();
+    void printHand(std::ostream& os) const {
+        os << name << "'s Hand:\n";
+        hand.print(os);
     }
-    void addScore(int score)
-    {
-        score += score;
-    }
-    int getScore() const
-    {
-        return score;
-    }
-    const std::string getName() const
-    {
-        return name;
-    }
+    const std::string& getName() const { return name; }
 };
 
-class Shuffle
-{
-    std::vector<Card> deck;
-    public:
-    Shuffle(const Deck& d)
-    {
-        deck=d.getDeck();
+class Pile {
+    std::vector<std::unique_ptr<Card>> pile;
+public:
+    void addCard(std::unique_ptr<Card> card) {
+        pile.push_back(std::move(card));
     }
-    void shuffle()
-    {
-        std::random_device rd;//random number generator
-        std::mt19937 g(rd());//mersenne twister engine
-        std::shuffle(deck.begin(), deck.end(),g);
-    }
-
-    void dealCards(Player &player1, Player &player2, Player &player3, Player &player4)
-    {
-        int i = 0;
-        while (i < 52) // Deal 13 cards to each player, total of 52 cards in a standard deck
-        {
-            if (i < 13) {
-                player1.addCardHand(deck[i]);
-            } else if (i < 26) {
-                player2.addCardHand(deck[i]);
-            } else if (i < 39) {
-                player3.addCardHand(deck[i]);
-            } else {
-                player4.addCardHand(deck[i]);
+    void print(std::ostream& os, const std::string& name) const {
+        os << name << ": ";
+        if (pile.empty()) {
+            os << "Empty\n";
+        } else {
+            for (const auto& card : pile) {
+                os << *card << ", ";
             }
-            i++;
+            os << "\n";
         }
     }
 };
 
+class Game {
+    Deck deck;
+    std::vector<Player> players;
+    Pile commonerPile;
+    Pile royaltyPile;
+    int currentSuit = -1; // No suit selected initially
+
+    static std::string suitToString(int suit) {
+        switch (suit) {
+            case 0: return "Hearts";
+            case 1: return "Spades";
+            case 2: return "Diamonds";
+            case 3: return "Clubs";
+            default: return "Unknown";
+        }
+    }
+
+public:
+    Game() {
+        players.emplace_back("Player 1");
+        players.emplace_back("Player 2");
+        players.emplace_back("Player 3");
+        players.emplace_back("Player 4");
+        deck.shuffle();
+
+        // Deal 13 cards to each player
+        for (auto& player : players) {
+            for (int i = 0; i < 13; ++i) {
+                player.addCard(deck.draw());
+            }
+        }
+    }
+
+    void printGameState() const {
+        std::cout << "Current Suit: "
+                  << (currentSuit == -1 ? "None" : suitToString(currentSuit))
+                  << "\n";
+
+        std::cout << "Commoner Pile:\n";
+        commonerPile.print(std::cout, "Commoner Pile");
+
+        std::cout << "Royalty Pile:\n";
+        royaltyPile.print(std::cout, "Royalty Pile");
+    }
 
 
-int main()
-{
-    Deck D1;
+    void playRound() {
+        bool isFirstCardPlayed = false; // Track if it's the first card of the round
 
-    Shuffle shuffle(D1);
-    shuffle.shuffle();
+        for (auto& player : players) {
+            std::cout << player.getName() << "'s turn.\n";
+            player.printHand(std::cout);
+            printGameState();
 
-    Player player1("Player 1");
-    Player player2("Player 2");
-    Player player3("Player 3");
-    Player player4("Player 4");
+            size_t cardIndex;
+            std::cout << "Choose a card to play: ";
+            std::cin >> cardIndex;
 
-    shuffle.dealCards(player1, player2, player3, player4);
+            auto card = player.playCard(cardIndex);
 
-    player1.printHand();
-    player2.printHand();
-    player3.printHand();
-    player4.printHand();
+            if (card == nullptr) {
+                std::cerr << "Invalid card choice. Skipping turn.\n";
+                continue;
+            }
+
+            // Check if the card is a Royalty or Commoner and update piles
+            if (card->getValue() >= 11 || card->getSuit() == 4) { // Royalty or Joker
+                royaltyPile.addCard(std::move(card));
+            } else { // Commoner
+                // Update the current suit only on the first player's card
+                if (!isFirstCardPlayed) {
+                    currentSuit = card->getSuit();
+                    isFirstCardPlayed = true;
+                }
+                commonerPile.addCard(std::move(card));
+            }
+
+            printGameState(); // Show game state after each player's turn
+        }
+
+        // Reset the current suit for the next round
+        currentSuit = -1;
+    }
+
+    void run() {
+        while (true) {
+            playRound();
+        }
+    }
+};
+
+int main() {
+    try {
+        Game game;
+        game.run();
+    } catch (const GameException& e) {
+        std::cerr << "Game Error: " << e.what() << "\n";
+    } catch (const std::exception& e) {
+        std::cerr << "Unknown Error: " << e.what() << "\n";
+    }
 
     return 0;
 }
