@@ -1,13 +1,44 @@
+// Deck.cpp
 #include "Deck.h"
+#include "Exception.h"
+#include "Factory.h" // Include Factory
+#include "Utility.h"
+#include <algorithm>
+#include <random>
+#include <stdexcept>
+#include <iostream>
 
 Deck::Deck() {
-    for (int suit = 0; suit < 4; ++suit) {
-        for (int value = 1; value <= 13; ++value) {
-            cards.push_back(std::make_unique<StandardCard>(suit, value));
+    // Instantiate Factory objects
+    Factory<Card, StandardCard> standardCardFactory;
+    Factory<Card, JokerCard> jokerCardFactory;
+
+    // Initialize deck with StandardCards
+    for (int s = 0; s < 4; ++s) { // Suits 0-3
+        for (int v = 1; v <= 13; ++v) { // Values 1-13
+            cards.emplace_back(standardCardFactory.create(s, v));
         }
     }
-    cards.push_back(std::make_unique<JokerCard>(1));
-    cards.push_back(std::make_unique<JokerCard>(2));
+    // Add Jokers
+    cards.emplace_back(jokerCardFactory.create(1)); // Black Joker
+    cards.emplace_back(jokerCardFactory.create(2)); // Red Joker
+}
+
+Deck::Deck(const Deck& other) {
+    cards.reserve(other.cards.size());
+    for (const auto& card : other.cards) {
+        cards.emplace_back(std::unique_ptr<Card>(card->clone()));
+    }
+}
+
+Deck& Deck::operator=(const Deck& other) {
+    if (this == &other) return *this;
+    cards.clear();
+    cards.reserve(other.cards.size());
+    for (const auto& card : other.cards) {
+        cards.emplace_back(std::unique_ptr<Card>(card->clone()));
+    }
+    return *this;
 }
 
 void Deck::shuffle() {
@@ -17,8 +48,16 @@ void Deck::shuffle() {
 }
 
 std::unique_ptr<Card> Deck::draw() {
-    if (cards.empty()) throw std::runtime_error("No cards left in the deck!");
-    auto card = std::move(cards.back());
+    if (cards.empty()) {
+        throw DeckEmptyException();
+    }
+    auto top = std::move(cards.back());
     cards.pop_back();
-    return card;
+    return top;
+}
+
+std::ostream& operator<<(std::ostream& os, const Deck& deckObj) {
+    os << "Deck contains:\n";
+    PrintContainer(deckObj.cards, os); // Use PrintContainer
+    return os;
 }

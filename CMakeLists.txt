@@ -57,6 +57,9 @@ add_executable(${PROJECT_NAME}
         Game.h
         Pile.cpp
         Pile.h
+        Exception.h
+        Factory.h
+        Utility.h
 )
 
 include(cmake/CompilerFlags.cmake)
